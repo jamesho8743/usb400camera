@@ -30,16 +30,18 @@
         android:layout_alignRight="@+id/cameraPreview"
         android:layout_marginBottom="36dp"
         android:layout_marginRight="78dp"
-        android:text="@string/button_record" />
+        android:text="@string/button_record"
+        android:visibility="invisible" />
 
     <Button
         android:id="@+id/buttonCapture"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_toLeftOf="@+id/buttonRecord"
-        android:layout_alignTop="@+id/buttonRecord"
         android:layout_alignBottom="@+id/buttonRecord"
-        android:text="@string/button_capture" />
+        android:layout_alignTop="@+id/buttonRecord"
+        android:layout_toLeftOf="@+id/buttonRecord"
+        android:text="@string/button_capture"
+        android:visibility="invisible" />
 
     <TextView
         android:id="@+id/textView2"
