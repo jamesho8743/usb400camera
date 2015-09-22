@@ -1,6 +1,7 @@
 package com.medicapture.usb400camera;
 
 import java.io.File;
+
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -17,7 +18,9 @@ import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.Bitmap.CompressFormat;
 import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
 import android.hardware.Camera;
 import android.hardware.Camera.PictureCallback;
 import android.hardware.Camera.Size;
@@ -44,6 +47,16 @@ class CameraPreview extends SurfaceView implements SurfaceHolder.Callback {
 	private SurfaceHolder mHolder;
 	private Camera mCamera;
 	static String TAG = "CameraPreview";
+	
+	private Bitmap mIconVideoSourceOn;
+	private Bitmap mIconStorageOn;
+	private Bitmap mIconUserOn;
+	private Bitmap mIconCaptureOn;
+	private Bitmap mIconRecordOn;
+	private Bitmap mIconDateTime;
+	private Paint mPaintText;
+	private Time mSystemTime = new Time();
+	private StatFs mFileSysStat = new StatFs( MainActivity.mManager.getStoragePath());
 
 	public CameraPreview(Context context, Camera camera) {
 		super(context);
@@ -51,10 +64,60 @@ class CameraPreview extends SurfaceView implements SurfaceHolder.Callback {
 
 		mHolder = getHolder();
 		mHolder.addCallback(this);
+		setupUIResource();
 	}
+	
+	private void setupUIResource() {
+		mPaintText = new Paint();
+		mPaintText.setTextSize(22);
+		mPaintText.setColor(Color.WHITE);
+		mIconVideoSourceOn = BitmapFactory.decodeResource(getResources(), R.drawable.source_on);
+		mIconStorageOn = BitmapFactory.decodeResource(getResources(), R.drawable.storage_on);
+		mIconUserOn = BitmapFactory.decodeResource(getResources(), R.drawable.user_on);
+		mIconCaptureOn = BitmapFactory.decodeResource(getResources(), R.drawable.capture_on);
+		mIconRecordOn = BitmapFactory.decodeResource(getResources(), R.drawable.record_on);
+		mIconDateTime = BitmapFactory.decodeResource(getResources(), R.drawable.datetime);
+	}
+	
+	@Override
+	protected void onDraw(Canvas canvas) {
+		super.onDraw(canvas);
+		int width = 128 + 16;
+		int x = 16;
+		int y = 850;
+				
+ 		long bytes = mFileSysStat.getAvailableBytes();
+		
+		canvas.drawBitmap( mIconVideoSourceOn, x, y, null);
+		canvas.drawText("1920x1080", x, y+150, mPaintText);
+		x += width; 
+		canvas.drawBitmap( mIconStorageOn, x, y, null);
+		canvas.drawText( String.format( "%.1fGB", bytes / 1000000000.0 ), x, y+150, mPaintText);
+		x += width;
+		canvas.drawBitmap( mIconUserOn, x, y, null);
+		canvas.drawText( String.format( "%04d", MainActivity.mPatientIndex), x, y+150, mPaintText);
+		x += width;
+		canvas.drawBitmap( mIconCaptureOn, x, y, null);
+		canvas.drawText( String.format( "%03d", MainActivity.mPictureIndex), x, y+150, mPaintText);
+		x += width;
+		canvas.drawBitmap( mIconRecordOn, x, y, null);
+		canvas.drawText( String.format( "%04d", MainActivity.mVideoIndex), x, y+150, mPaintText);
+		x = 1780;
+		canvas.drawBitmap( mIconDateTime, x, y, null);
+		mSystemTime.setToNow();
+		if ( mSystemTime.second % 2 == 0 ) {
+			canvas.drawText( mSystemTime.format("%H:%M"), x - 70, y + 90, mPaintText);
+		}
+		else {
+			canvas.drawText( mSystemTime.format("%H %M"), x - 70, y + 90, mPaintText);
+		}
+		canvas.drawText( mSystemTime.format3339(true), x - 70, y+120, mPaintText);
+	}
+
 
 	public void surfaceCreated(SurfaceHolder holder) {
 		Log.d(TAG, "surfaceCreated " );
+		setWillNotDraw(false);
 		/*
 		try {
 			mCamera.setPreviewDisplay(holder);
@@ -194,6 +257,7 @@ public class MainActivity extends Activity {
 				mPatientIndex = 1;
 				mVideoIndex = 0;
 				mPictureIndex = 0;
+				/*
 				boolean ok = new File(mManager.getStoragePath() + "/Patient" + String.valueOf(MainActivity.mPatientIndex)).mkdir();
 				StatFs stat = new StatFs(mManager.getStoragePath());
 		 		long bytes = stat.getAvailableBytes();
@@ -201,6 +265,7 @@ public class MainActivity extends Activity {
 		 		MainActivity.textView2.setTextColor(Color.GREEN);
 		        String size = "Avail " + String.valueOf(bytes);
 		        MainActivity.textView2.setText(size);
+		        */
 		        
 			}
 			else if ( action.equals(Intent.ACTION_MEDIA_EJECT) ) {
@@ -373,15 +438,7 @@ public class MainActivity extends Activity {
 	}
 	public Handler mHandler = new Handler() {
 	    public void handleMessage(Message msg) {
-	    	TextView textView3 = (TextView)findViewById(R.id.textView3);
-	    	Time systemTime = new Time();
-	    	systemTime.setToNow();
-	 		textView3.setTextColor(Color.GREEN);
-	    	textView3.setText(systemTime.format2445());
-	    	TextView textView4 = (TextView)findViewById(R.id.textView4);
-	    	textView4.setTextColor(Color.GREEN);
-	    	textView4.setText("Case" + String.format( "%03d", mPatientIndex));
-	        
+	    	mPreview.invalidate();	        
 	    }
 	};
 	
@@ -491,8 +548,7 @@ public class MainActivity extends Activity {
 			}
 		}
 
-		);
-	
+		);	
 	}
 
 	@Override

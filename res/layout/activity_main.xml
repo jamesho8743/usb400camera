@@ -50,24 +50,5 @@
         android:layout_alignBottom="@+id/buttonCapture"
         android:layout_alignTop="@+id/buttonCapture"
         android:text="" />
-
-    <TextView
-        android:id="@+id/textView3"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_alignParentTop="true"
-        android:layout_marginTop="26dp"
-        android:layout_toRightOf="@+id/buttonCapture"
-        android:text="TextView3" />
-
-    <TextView
-        android:id="@+id/textView4"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_alignBaseline="@+id/textView3"
-        android:layout_alignBottom="@+id/textView3"
-        android:layout_marginRight="174dp"
-        android:layout_toLeftOf="@+id/buttonCapture"
-        android:text="TextView4" />
     
 </RelativeLayout>
