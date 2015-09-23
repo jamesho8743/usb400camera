@@ -5,7 +5,9 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.TimeZone;
 import java.util.Timer;
 import java.util.TimerTask;
 
@@ -50,14 +52,17 @@ class CameraPreview extends SurfaceView implements SurfaceHolder.Callback {
 	
 	private Bitmap mIconVideoSourceOn;
 	private Bitmap mIconStorageOn;
+	private Bitmap mIconStorageOff;
 	private Bitmap mIconUserOn;
 	private Bitmap mIconCaptureOn;
+	private Bitmap mIconCaptureOff;
 	private Bitmap mIconRecordOn;
+	private Bitmap mIconRecordOff;
+	private Bitmap mIconRecording;
 	private Bitmap mIconDateTime;
 	private Paint mPaintText;
-	private Time mSystemTime = new Time();
-	private StatFs mFileSysStat = new StatFs( MainActivity.mManager.getStoragePath());
-
+	private Time mSystemTime;
+	
 	public CameraPreview(Context context, Camera camera) {
 		super(context);
 		mCamera = camera;
@@ -73,10 +78,16 @@ class CameraPreview extends SurfaceView implements SurfaceHolder.Callback {
 		mPaintText.setColor(Color.WHITE);
 		mIconVideoSourceOn = BitmapFactory.decodeResource(getResources(), R.drawable.source_on);
 		mIconStorageOn = BitmapFactory.decodeResource(getResources(), R.drawable.storage_on);
+		mIconStorageOff = BitmapFactory.decodeResource(getResources(), R.drawable.storage_off);
 		mIconUserOn = BitmapFactory.decodeResource(getResources(), R.drawable.user_on);
 		mIconCaptureOn = BitmapFactory.decodeResource(getResources(), R.drawable.capture_on);
+		mIconCaptureOff = BitmapFactory.decodeResource(getResources(), R.drawable.capture_off);
 		mIconRecordOn = BitmapFactory.decodeResource(getResources(), R.drawable.record_on);
+		mIconRecordOff = BitmapFactory.decodeResource(getResources(), R.drawable.record_off);
+		mIconRecording = BitmapFactory.decodeResource(getResources(), R.drawable.recording);
 		mIconDateTime = BitmapFactory.decodeResource(getResources(), R.drawable.datetime);
+		mSystemTime = new Time( TimeZone.getDefault().toString());
+	
 	}
 	
 	@Override
@@ -84,23 +95,38 @@ class CameraPreview extends SurfaceView implements SurfaceHolder.Callback {
 		super.onDraw(canvas);
 		int width = 128 + 16;
 		int x = 16;
-		int y = 850;
-				
- 		long bytes = mFileSysStat.getAvailableBytes();
-		
+		int y = 850;		
+ 		long bytes;
+ 		
 		canvas.drawBitmap( mIconVideoSourceOn, x, y, null);
 		canvas.drawText("1920x1080", x, y+150, mPaintText);
 		x += width; 
-		canvas.drawBitmap( mIconStorageOn, x, y, null);
+		if ( MainActivity.diskInserted ) {
+			bytes = MainActivity.diskAvailableBytes;
+			canvas.drawBitmap( mIconStorageOn, x, y, null);
+		} else {
+			bytes = 0;
+			canvas.drawBitmap( mIconStorageOff, x, y, null);
+		}
 		canvas.drawText( String.format( "%.1fGB", bytes / 1000000000.0 ), x, y+150, mPaintText);
 		x += width;
 		canvas.drawBitmap( mIconUserOn, x, y, null);
 		canvas.drawText( String.format( "%04d", MainActivity.mPatientIndex), x, y+150, mPaintText);
 		x += width;
-		canvas.drawBitmap( mIconCaptureOn, x, y, null);
+		if ( MainActivity.diskInserted && MainActivity.hasRecorded ) {
+			canvas.drawBitmap( mIconCaptureOn, x, y, null);
+		} else {
+			canvas.drawBitmap( mIconCaptureOff, x, y, null);
+		}
 		canvas.drawText( String.format( "%03d", MainActivity.mPictureIndex), x, y+150, mPaintText);
 		x += width;
-		canvas.drawBitmap( mIconRecordOn, x, y, null);
+		if ( MainActivity.diskInserted ) {
+			if ( MainActivity.isRecording )
+				canvas.drawBitmap( mIconRecording, x, y, null);
+			else
+				canvas.drawBitmap( mIconRecordOn, x, y, null);
+		} else
+			canvas.drawBitmap( mIconRecordOff, x, y, null);
 		canvas.drawText( String.format( "%04d", MainActivity.mVideoIndex), x, y+150, mPaintText);
 		x = 1780;
 		canvas.drawBitmap( mIconDateTime, x, y, null);
@@ -201,11 +227,15 @@ class CheckingDisk extends Thread {
 		while (true) {
 		// Checking Disk
 			MainActivity.mManager.update();
-			if ( MainActivity.mManager.getStoragePath() != null )
+			String s = MainActivity.mManager.getStoragePath();
+			if ( s != null ) {
+				StatFs mFileSysStat = new StatFs(s);
+				MainActivity.diskAvailableBytes = mFileSysStat.getAvailableBytes();
 				MainActivity.diskInserted = true;
+			}
 			else
 				MainActivity.diskInserted = false;
-		
+			
 		// Update LED
 			if ( !MainActivity.isRecording)
 				MainActivity.UpdatePanelLED();
@@ -228,20 +258,23 @@ public class MainActivity extends Activity {
 	private TimerTask mBlinkingTask;
 	private TimerTask mDisplayTimeTask;
 	static boolean diskInserted;
-	private static boolean hasRecorded = true;
+	static long diskAvailableBytes;
+	static boolean hasRecorded = false;
 	private boolean isCapturing;
 	
 	private int mInputResolutionWidth = 1920;
 	private int mInputResolutionHeight = 1080;
 	
-	static int mPictureIndex = 0;
-	static int mVideoIndex = 0;
+	static int mPictureIndex = 1;
+	static int mVideoIndex = 1;
 	static int mPatientIndex = 1;
 	
 	static StorageManager mManager = new StorageManager();
 	static final String KEY_RESOLUTION_WIDTH = "INPUT_RES_WIDTH";
 	static final String KEY_RESOLUTION_HEIGHT = "INPUT_RES_HEIGHT";
 	static TextView textView2;
+		
+	private ArrayList<Integer> keyLockList = new ArrayList<Integer>();
 		
 	Button recordButton;
 	Button captureButton;
@@ -255,8 +288,8 @@ public class MainActivity extends Activity {
 			if ( action.equals(Intent.ACTION_MEDIA_MOUNTED) ) {
 				MainActivity.mManager.update();
 				mPatientIndex = 1;
-				mVideoIndex = 0;
-				mPictureIndex = 0;
+				mVideoIndex = 1;
+				mPictureIndex = 1;
 				/*
 				boolean ok = new File(mManager.getStoragePath() + "/Patient" + String.valueOf(MainActivity.mPatientIndex)).mkdir();
 				StatFs stat = new StatFs(mManager.getStoragePath());
@@ -297,90 +330,104 @@ public class MainActivity extends Activity {
 		}
 	}
 	
+	static void createNewUser() {
+		mPatientIndex++;
+		mVideoIndex = 1;
+		mPictureIndex = 1;
+	}
+	
 	@Override
 	public boolean onKeyDown(int keyCode, KeyEvent event) {
 		TextView myTextView = (TextView)findViewById(R.id.textView1);
-        myTextView.setTextSize(30);
-        myTextView.setTextColor(Color.GREEN);
-		 switch (keyCode) {
-		 	case KeyEvent.KEYCODE_F8:
-		 		/*
+		myTextView.setTextSize(30);
+		myTextView.setTextColor(Color.GREEN);
+
+		for ( Integer i:keyLockList ) {
+			if ( i == keyCode )
+				return true;
+		}
+	            
+		keyLockList.add(keyCode);
+		switch (keyCode) {
+		case KeyEvent.KEYCODE_F8:
+			/*
 		 		if ( mInputResolutionHeight != 720 )
 		 		{
 		 			mInputResolutionWidth = 1280;
 		 			mInputResolutionHeight = 720;
 		 			this.recreate();
 		 		}
-		 		*/
-		 		/*
+			 */
+			/*
 		 		Camera.Parameters camPara = mCamera.getParameters();
 				camPara.setPreviewSize(1280, 720);
 				mCamera.setParameters(camPara);
-				*/
-		 		return true;
-		 	case KeyEvent.KEYCODE_F9:
-		 		/*
+			 */
+			return true;
+		case KeyEvent.KEYCODE_F9:
+			/*
 		 		if ( mInputResolutionHeight != 1080 )
 		 		{
 		 			mInputResolutionWidth = 1920;
 		 			mInputResolutionHeight = 1080;
 		 			this.recreate();
 		 		}
-		 		*/
-		 		/*
+			 */
+			/*
 		 		camPara = mCamera.getParameters();
 				camPara.setPreviewSize(1920, 1080);
 				mCamera.setParameters(camPara);
-				*/
-		 		return true;
-		 		
-	        case KeyEvent.KEYCODE_F1:
-	        	if ( diskInserted && hasRecorded && !isCapturing )
-	        	{
-	        		isCapturing = true;
-	        		captureButton.callOnClick();
-	        	}
-	        	myTextView.setText("Capture");
-	            return true;
-	        case KeyEvent.KEYCODE_F2:
-	        	if ( diskInserted)
-	        		recordButton.callOnClick();
-	        	myTextView.setText("Record");
-	            return true;
-	        case KeyEvent.KEYCODE_F3:
-	            myTextView.setText("Patient");
-	            mPatientIndex++;
-	            new File(mManager.getStoragePath() + "/Patient" + String.valueOf(mPatientIndex)).mkdir();
-	            return true;
-	        case KeyEvent.KEYCODE_F4:
-	            myTextView.setText("Remote1");
-	            return true;
-	        case KeyEvent.KEYCODE_F5:
-	            myTextView.setText("Remote2");
-	            return true;
-	        case KeyEvent.KEYCODE_DPAD_UP:
-	            myTextView.setText("Up");
-	            return true;
-	        case KeyEvent.KEYCODE_DPAD_DOWN:
-	            myTextView.setText("Down");
-	            return true;
-	        case KeyEvent.KEYCODE_DPAD_LEFT:
-	            myTextView.setText("Left");
-	            return true;
-	        case KeyEvent.KEYCODE_DPAD_RIGHT:
-	            myTextView.setText("Right");
-	            return true;
-	        case KeyEvent.KEYCODE_ENTER:
-	            myTextView.setText("Enter");
-	            return true;	            
-	        default:
-	            return super.onKeyDown(keyCode, event);
-	    }
+			 */
+			return true;
+
+		case KeyEvent.KEYCODE_F1:
+			if ( diskInserted && hasRecorded && !isCapturing )
+			{
+				isCapturing = true;
+				captureButton.callOnClick();
+			}
+			//myTextView.setText("Capture");
+			return true;
+		case KeyEvent.KEYCODE_F2:
+			if ( diskInserted)
+				recordButton.callOnClick();
+			//myTextView.setText("Record");
+			return true;
+		case KeyEvent.KEYCODE_F3:
+			//myTextView.setText("Patient");
+			createNewUser();
+			new File(mManager.getStoragePath() + "/Patient" + String.valueOf(mPatientIndex)).mkdir();
+			return true;
+		case KeyEvent.KEYCODE_F4:
+			myTextView.setText("Remote1");
+			return true;
+		case KeyEvent.KEYCODE_F5:
+			myTextView.setText("Remote2");
+			return true;
+		case KeyEvent.KEYCODE_DPAD_UP:
+			myTextView.setText("Up");
+			return true;
+		case KeyEvent.KEYCODE_DPAD_DOWN:
+			myTextView.setText("Down");
+			return true;
+		case KeyEvent.KEYCODE_DPAD_LEFT:
+			myTextView.setText("Left");
+			return true;
+		case KeyEvent.KEYCODE_DPAD_RIGHT:
+			myTextView.setText("Right");
+			return true;
+		case KeyEvent.KEYCODE_ENTER:
+			myTextView.setText("Enter");
+			return true;	            
+		default:
+			return super.onKeyDown(keyCode, event);
+		}
 	}
-	
+
 	@Override
 	public boolean onKeyUp(int keyCode, KeyEvent event) {
 		TextView myTextView = (TextView)findViewById(R.id.textView1);
+		keyLockList.remove( Integer.valueOf(keyCode));
 	    switch (keyCode) {
 	        case KeyEvent.KEYCODE_F1:
 	        	myTextView.setText("");
@@ -575,13 +622,13 @@ public class MainActivity extends Activity {
 		mCamera.unlock();
 		mMediaRecorder.setCamera(mCamera); // Must be called before prepare()
 
-		mMediaRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
+		//mMediaRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
 		mMediaRecorder.setVideoSource(MediaRecorder.VideoSource.CAMERA);
 		
 		//mMediaRecorder.setProfile(CamcorderProfile.get(CamcorderProfile.QUALITY_HIGH));
 		mMediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
 		
-		mMediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC); // this line must be after setOutputFormat, or throw IllegalStateException
+		//mMediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC); // this line must be after setOutputFormat, or throw IllegalStateException
 		mMediaRecorder.setVideoFrameRate(60);
 		mMediaRecorder.setVideoSize(mInputResolutionWidth, mInputResolutionHeight);
 		mMediaRecorder.setVideoEncodingBitRate(10000000);
